@@ -62,7 +62,7 @@ where
             let mut evicted = false;
             let now = Instant::now();
             let expired_key = inner.order.iter().find(|k| {
-                inner.items.get(*k).map_or(false, |e| e.expires_at.map_or(false, |t| now > t))
+                inner.items.get(*k).is_some_and(|e| e.expires_at.is_some_and(|t| now > t))
             }).cloned();
 
             if let Some(ek) = expired_key {
