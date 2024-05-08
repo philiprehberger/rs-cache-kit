@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Add `keys()` method — returns all non-expired keys
+- Add `get_or_insert_with()` method — atomically get or compute+insert a value
+- Add `remove_expired()` method — proactive cleanup of expired entries
+- Add `is_empty()` convenience method
+- Add `max_size()` getter for inspecting cache capacity
+
 ## 0.2.0
 
 - Add `Debug` trait implementation for `Cache`
