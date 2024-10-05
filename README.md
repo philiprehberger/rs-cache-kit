@@ -1,12 +1,16 @@
 # rs-cache-kit
 
+[![CI](https://github.com/philiprehberger/rs-cache-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/philiprehberger/rs-cache-kit/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/philiprehberger-cache-kit.svg)](https://crates.io/crates/philiprehberger-cache-kit)
+[![License](https://img.shields.io/github/license/philiprehberger/rs-cache-kit)](LICENSE)
+
 Generic LRU cache with TTL, tags, and thread safety for Rust.
 
 ## Installation
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.1"
+philiprehberger-cache-kit = "0.3"
 ```
 
 ## Usage
@@ -61,6 +65,23 @@ cache.has(&key)      // check existence
 cache.delete(&key)   // delete entry
 cache.size()         // entry count
 cache.clear()        // remove all
+```
+
+### Get or Insert
+
+```rust
+let value = cache.get_or_insert_with("key".to_string(), || {
+    expensive_computation()
+});
+```
+
+### Maintenance
+
+```rust
+cache.is_empty()        // check if empty
+cache.max_size()        // max capacity
+cache.keys()            // all non-expired keys
+cache.remove_expired()  // clean up expired entries
 ```
 
 ## License
