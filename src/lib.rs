@@ -219,7 +219,7 @@ where
             .items
             .iter()
             .filter(|(_, entry)| {
-                entry.expires_at.is_none_or(|t| now <= t)
+                entry.expires_at.map_or(true, |t| now <= t)
             })
             .map(|(k, _)| k.clone())
             .collect()
