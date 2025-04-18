@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0
+## 0.4.0 (2026-03-17)
 
 - Add `CacheStats` struct and `stats()` method for tracking hits, misses, and evictions
 - Add `get_many()` method for batch key retrieval
