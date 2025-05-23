@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Add crate-level documentation with usage examples
+
 ## 0.4.0 (2026-03-17)
 
 - Add `CacheStats` struct and `stats()` method for tracking hits, misses, and evictions

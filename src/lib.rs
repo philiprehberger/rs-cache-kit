@@ -1,3 +1,15 @@
+//! Generic LRU cache with TTL, tags, and async support.
+//!
+//! # Example
+//!
+//! ```rust
+//! use philiprehberger_cache_kit::Cache;
+//!
+//! let mut cache = Cache::new(100);
+//! cache.set("key", "value", None, None);
+//! assert_eq!(cache.get("key"), Some(&"value"));
+//! ```
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::hash::Hash;
