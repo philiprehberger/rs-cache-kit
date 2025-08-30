@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 (2026-03-22)
+
+- Fix README and CHANGELOG compliance
+
 ## 0.4.1 (2026-03-17)
 
 - Add crate-level documentation with usage examples
@@ -11,15 +15,16 @@
 - Add `delete_where()` method for conditional entry removal
 - Add `len()` method as alias for `size()`
 
-## 0.3.6
+## 0.3.6 (2026-03-17)
 
 - Fix clippy incompatible_msrv: replace is_none_or with map_or for Rust 1.70 compatibility
 
-## 0.3.5
+## 0.3.5 (2026-03-17)
 
 - Add readme, rust-version, documentation to Cargo.toml
 - Remove redundant license-file from Cargo.toml
 - Add Development section to README
+
 ## 0.3.4 (2026-03-16)
 
 - Update install snippet to use full version

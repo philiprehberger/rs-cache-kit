@@ -10,12 +10,10 @@ Generic LRU cache with TTL, tags, and async support for Rust
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.4.1"
+philiprehberger-cache-kit = "0.4.2"
 ```
 
 ## Usage
-
-### Basic Cache
 
 ```rust
 use philiprehberger_cache_kit::Cache;
