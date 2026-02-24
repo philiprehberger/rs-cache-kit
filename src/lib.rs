@@ -45,6 +45,8 @@ where
     evictions: Arc<AtomicU64>,
 }
 
+type EvictCallback<K, V> = Arc<dyn Fn(&K, &V) + Send + Sync>;
+
 struct CacheInner<K, V>
 where
     K: Eq + Hash + Clone,
@@ -53,6 +55,7 @@ where
     order: VecDeque<K>,
     max_size: usize,
     default_ttl: Option<Duration>,
+    on_evict: Option<EvictCallback<K, V>>,
 }
 
 impl<K, V> Default for Cache<K, V>
@@ -90,6 +93,7 @@ where
                 order: VecDeque::with_capacity(max_size),
                 max_size,
                 default_ttl,
+                on_evict: None,
             })),
             hits: Arc::new(AtomicU64::new(0)),
             misses: Arc::new(AtomicU64::new(0)),
@@ -127,6 +131,11 @@ where
                 .cloned();
 
             if let Some(ek) = expired_key {
+                if let Some(ref cb) = inner.on_evict {
+                    if let Some(entry) = inner.items.get(&ek) {
+                        cb(&ek, &entry.value);
+                    }
+                }
                 inner.items.remove(&ek);
                 inner.order.retain(|k| k != &ek);
                 self.evictions.fetch_add(1, Ordering::Relaxed);
@@ -135,6 +144,11 @@ where
 
             if !evicted {
                 if let Some(lru_key) = inner.order.pop_back() {
+                    if let Some(ref cb) = inner.on_evict {
+                        if let Some(entry) = inner.items.get(&lru_key) {
+                            cb(&lru_key, &entry.value);
+                        }
+                    }
                     inner.items.remove(&lru_key);
                     self.evictions.fetch_add(1, Ordering::Relaxed);
                 }
@@ -224,6 +238,13 @@ where
             .map(|(k, _)| k.clone())
             .collect();
         let count = keys.len();
+        if let Some(ref cb) = inner.on_evict {
+            for key in &keys {
+                if let Some(entry) = inner.items.get(key) {
+                    cb(key, &entry.value);
+                }
+            }
+        }
         for key in &keys {
             inner.items.remove(key);
         }
@@ -234,6 +255,11 @@ where
     /// Remove all entries.
     pub fn clear(&self) {
         let mut inner = self.inner.write().unwrap();
+        if let Some(ref cb) = inner.on_evict {
+            for (key, entry) in inner.items.iter() {
+                cb(key, &entry.value);
+            }
+        }
         inner.items.clear();
         inner.order.clear();
     }
@@ -278,6 +304,13 @@ where
             .map(|(k, _)| k.clone())
             .collect();
         let count = expired_keys.len();
+        if let Some(ref cb) = inner.on_evict {
+            for key in &expired_keys {
+                if let Some(entry) = inner.items.get(key) {
+                    cb(key, &entry.value);
+                }
+            }
+        }
         for key in &expired_keys {
             inner.items.remove(key);
         }
@@ -339,11 +372,73 @@ where
             .map(|(k, _)| k.clone())
             .collect();
         let count = keys_to_remove.len();
+        if let Some(ref cb) = inner.on_evict {
+            for key in &keys_to_remove {
+                if let Some(entry) = inner.items.get(key) {
+                    cb(key, &entry.value);
+                }
+            }
+        }
         for key in &keys_to_remove {
             inner.items.remove(key);
         }
         inner.order.retain(|k| !keys_to_remove.contains(k));
         count
+    }
+
+    /// Read a value without updating LRU order.
+    ///
+    /// Returns `None` if the key is missing or expired.
+    /// Increments hits on success, misses on failure.
+    pub fn peek(&self, key: &K) -> Option<V>
+    where
+        V: Clone,
+    {
+        let inner = self.inner.read().unwrap();
+        let entry = match inner.items.get(key) {
+            Some(e) => e,
+            None => {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+        };
+
+        if let Some(expires_at) = entry.expires_at {
+            if Instant::now() > expires_at {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+        }
+
+        self.hits.fetch_add(1, Ordering::Relaxed);
+        Some(entry.value.clone())
+    }
+
+    /// Register a callback that fires when entries are evicted.
+    ///
+    /// The callback is invoked during LRU eviction, `remove_expired()`,
+    /// `invalidate_by_tag()`, `delete_where()`, and `clear()`.
+    pub fn on_evict<F>(&self, callback: F)
+    where
+        F: Fn(&K, &V) + Send + Sync + 'static,
+    {
+        let mut inner = self.inner.write().unwrap();
+        inner.on_evict = Some(Arc::new(callback));
+    }
+
+    /// Check the remaining TTL for an entry.
+    ///
+    /// Returns `None` if the key is missing, has no TTL, or is expired.
+    /// Does not update LRU order.
+    pub fn entry_ttl_remaining(&self, key: &K) -> Option<Duration> {
+        let inner = self.inner.read().unwrap();
+        let entry = inner.items.get(key)?;
+        let expires_at = entry.expires_at?;
+        let now = Instant::now();
+        if now > expires_at {
+            return None;
+        }
+        Some(expires_at - now)
     }
 
     /// Return the number of entries (alias for [`size()`](Self::size)).
@@ -695,5 +790,138 @@ mod tests {
         cache.set("b", 2);
         assert_eq!(cache.len(), 2);
         assert_eq!(cache.len(), cache.size());
+    }
+
+    #[test]
+    fn test_peek_returns_value_without_updating_lru() {
+        let cache = Cache::new(2, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+        // peek(a) should return Some but NOT update LRU
+        assert_eq!(cache.peek(&"a"), Some(1));
+        // Insert c — should evict a (since peek didn't update a's LRU position)
+        cache.set("c", 3);
+        assert_eq!(cache.get(&"a"), None);
+        assert_eq!(cache.get(&"b"), Some(2));
+        assert_eq!(cache.get(&"c"), Some(3));
+    }
+
+    #[test]
+    fn test_peek_returns_none_for_missing() {
+        let cache: Cache<&str, i32> = Cache::new(10, None);
+        assert_eq!(cache.peek(&"missing"), None);
+    }
+
+    #[test]
+    fn test_peek_returns_none_for_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("key", "value", Some(Duration::from_millis(30)), &[]);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(cache.peek(&"key"), None);
+    }
+
+    #[test]
+    fn test_peek_increments_stats() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+
+        // peek hit
+        cache.peek(&"a");
+        let s = cache.stats();
+        assert_eq!(s.hits, 1);
+        assert_eq!(s.misses, 0);
+
+        // peek miss
+        cache.peek(&"missing");
+        let s = cache.stats();
+        assert_eq!(s.hits, 1);
+        assert_eq!(s.misses, 1);
+    }
+
+    #[test]
+    fn test_on_evict_fires_on_lru_eviction() {
+        let cache = Cache::new(2, None);
+        let evicted = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let evicted2 = evicted.clone();
+        cache.on_evict(move |key: &&str, _val: &i32| {
+            evicted2.lock().unwrap().push(*key);
+        });
+
+        cache.set("a", 1);
+        cache.set("b", 2);
+        cache.set("c", 3); // evicts "a"
+
+        let log = evicted.lock().unwrap();
+        assert_eq!(*log, vec!["a"]);
+    }
+
+    #[test]
+    fn test_on_evict_fires_on_clear() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+
+        let evicted = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let evicted2 = evicted.clone();
+        cache.on_evict(move |key: &&str, _val: &i32| {
+            evicted2.lock().unwrap().push(*key);
+        });
+
+        cache.clear();
+
+        let mut log = evicted.lock().unwrap().clone();
+        log.sort();
+        assert_eq!(log, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_on_evict_fires_on_remove_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("stale", 1, Some(Duration::from_millis(30)), &[]);
+
+        let evicted = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let evicted2 = evicted.clone();
+        cache.on_evict(move |key: &&str, _val: &i32| {
+            evicted2.lock().unwrap().push(*key);
+        });
+
+        std::thread::sleep(Duration::from_millis(50));
+        cache.remove_expired();
+
+        let log = evicted.lock().unwrap();
+        assert_eq!(*log, vec!["stale"]);
+    }
+
+    #[test]
+    fn test_entry_ttl_remaining_returns_some() {
+        let cache = Cache::new(100, None);
+        cache.set_with("key", "value", Some(Duration::from_secs(10)), &[]);
+
+        let remaining = cache.entry_ttl_remaining(&"key");
+        assert!(remaining.is_some());
+        let dur = remaining.unwrap();
+        assert!(dur <= Duration::from_secs(10));
+        assert!(dur > Duration::from_secs(8));
+    }
+
+    #[test]
+    fn test_entry_ttl_remaining_returns_none_for_no_ttl() {
+        let cache = Cache::new(100, None);
+        cache.set("key", "value");
+        assert_eq!(cache.entry_ttl_remaining(&"key"), None);
+    }
+
+    #[test]
+    fn test_entry_ttl_remaining_returns_none_for_missing() {
+        let cache: Cache<&str, &str> = Cache::new(100, None);
+        assert_eq!(cache.entry_ttl_remaining(&"missing"), None);
+    }
+
+    #[test]
+    fn test_entry_ttl_remaining_returns_none_for_expired() {
+        let cache = Cache::new(100, None);
+        cache.set_with("key", "value", Some(Duration::from_millis(30)), &[]);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(cache.entry_ttl_remaining(&"key"), None);
     }
 }
