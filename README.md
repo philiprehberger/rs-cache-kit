@@ -6,7 +6,7 @@ Generic LRU cache with TTL, tags, and thread safety for Rust.
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.1"
+philiprehberger-cache-kit = "0.3"
 ```
 
 ## Usage
@@ -61,6 +61,23 @@ cache.has(&key)      // check existence
 cache.delete(&key)   // delete entry
 cache.size()         // entry count
 cache.clear()        // remove all
+```
+
+### Get or Insert
+
+```rust
+let value = cache.get_or_insert_with("key".to_string(), || {
+    expensive_computation()
+});
+```
+
+### Maintenance
+
+```rust
+cache.is_empty()        // check if empty
+cache.max_size()        // max capacity
+cache.keys()            // all non-expired keys
+cache.remove_expired()  // clean up expired entries
 ```
 
 ## License

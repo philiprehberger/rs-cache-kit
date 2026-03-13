@@ -200,6 +200,64 @@ where
     pub fn size(&self) -> usize {
         self.inner.read().unwrap().items.len()
     }
+
+    /// Returns true if the cache has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.inner.read().unwrap().items.is_empty()
+    }
+
+    /// Returns the maximum number of entries the cache can hold.
+    pub fn max_size(&self) -> usize {
+        self.inner.read().unwrap().max_size
+    }
+
+    /// Returns a list of all non-expired keys in the cache.
+    pub fn keys(&self) -> Vec<K> {
+        let inner = self.inner.read().unwrap();
+        let now = Instant::now();
+        inner
+            .items
+            .iter()
+            .filter(|(_, entry)| {
+                entry.expires_at.map_or(true, |t| now <= t)
+            })
+            .map(|(k, _)| k.clone())
+            .collect()
+    }
+
+    /// Remove all expired entries from the cache. Returns the number of entries removed.
+    pub fn remove_expired(&self) -> usize {
+        let mut inner = self.inner.write().unwrap();
+        let now = Instant::now();
+        let expired_keys: Vec<K> = inner
+            .items
+            .iter()
+            .filter(|(_, entry)| entry.expires_at.is_some_and(|t| now > t))
+            .map(|(k, _)| k.clone())
+            .collect();
+        let count = expired_keys.len();
+        for key in &expired_keys {
+            inner.items.remove(key);
+        }
+        inner.order.retain(|k| !expired_keys.contains(k));
+        count
+    }
+
+    /// Get a value from the cache, or insert one computed by the given closure if absent or expired.
+    pub fn get_or_insert_with<F>(&self, key: K, f: F) -> V
+    where
+        V: Clone,
+        F: FnOnce() -> V,
+    {
+        // Try to get first
+        if let Some(val) = self.get(&key) {
+            return val;
+        }
+        // Compute and insert
+        let value = f();
+        self.set(key, value.clone());
+        value
+    }
 }
 
 impl<K, V> Clone for Cache<K, V>
@@ -368,5 +426,77 @@ mod tests {
         }
 
         assert_eq!(cache.size(), 10);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let cache: Cache<&str, &str> = Cache::new(10, None);
+        assert!(cache.is_empty());
+        cache.set("key", "value");
+        assert!(!cache.is_empty());
+    }
+
+    #[test]
+    fn test_max_size() {
+        let cache: Cache<&str, &str> = Cache::new(42, None);
+        assert_eq!(cache.max_size(), 42);
+    }
+
+    #[test]
+    fn test_keys() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+        let mut keys = cache.keys();
+        keys.sort();
+        assert_eq!(keys, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_keys_excludes_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("fresh", 1, None, &[]);
+        cache.set_with("expired", 2, Some(Duration::from_millis(1)), &[]);
+        std::thread::sleep(Duration::from_millis(10));
+        let keys = cache.keys();
+        assert_eq!(keys, vec!["fresh"]);
+    }
+
+    #[test]
+    fn test_remove_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("fresh", 1, None, &[]);
+        cache.set_with("stale1", 2, Some(Duration::from_millis(1)), &[]);
+        cache.set_with("stale2", 3, Some(Duration::from_millis(1)), &[]);
+        std::thread::sleep(Duration::from_millis(10));
+        let removed = cache.remove_expired();
+        assert_eq!(removed, 2);
+        assert_eq!(cache.size(), 1);
+        assert!(cache.has(&"fresh"));
+    }
+
+    #[test]
+    fn test_get_or_insert_with_existing() {
+        let cache = Cache::new(10, None);
+        cache.set("key", 42);
+        let val = cache.get_or_insert_with("key", || 99);
+        assert_eq!(val, 42);
+    }
+
+    #[test]
+    fn test_get_or_insert_with_missing() {
+        let cache = Cache::new(10, None);
+        let val = cache.get_or_insert_with("key", || 99);
+        assert_eq!(val, 99);
+        assert_eq!(cache.get(&"key"), Some(99));
+    }
+
+    #[test]
+    fn test_get_or_insert_with_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("key", 42, Some(Duration::from_millis(1)), &[]);
+        std::thread::sleep(Duration::from_millis(10));
+        let val = cache.get_or_insert_with("key", || 99);
+        assert_eq!(val, 99);
     }
 }
