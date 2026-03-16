@@ -1,5 +1,9 @@
 # rs-cache-kit
 
+[![CI](https://github.com/philiprehberger/rs-cache-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/philiprehberger/rs-cache-kit/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/philiprehberger-cache-kit.svg)](https://crates.io/crates/philiprehberger-cache-kit)
+[![License](https://img.shields.io/github/license/philiprehberger/rs-cache-kit)](LICENSE)
+
 Generic LRU cache with TTL, tags, and thread safety for Rust.
 
 ## Installation
