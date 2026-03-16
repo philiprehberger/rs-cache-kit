@@ -10,7 +10,7 @@ Generic LRU cache with TTL, tags, and thread safety for Rust.
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.3.4"
+philiprehberger-cache-kit = "0.3.5"
 ```
 
 ## Usage
@@ -82,6 +82,14 @@ cache.is_empty()        // check if empty
 cache.max_size()        // max capacity
 cache.keys()            // all non-expired keys
 cache.remove_expired()  // clean up expired entries
+```
+
+
+## Development
+
+```bash
+cargo test
+cargo clippy -- -D warnings
 ```
 
 ## License

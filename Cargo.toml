@@ -1,11 +1,13 @@
 [package]
 name = "philiprehberger-cache-kit"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 authors = ["Philip Rehberger"]
 description = "Generic LRU cache with TTL, tags, and async support for Rust"
 license = "MIT"
-license-file = "LICENSE"
 repository = "https://github.com/philiprehberger/rs-cache-kit"
+readme = "README.md"
+rust-version = "1.70"
+documentation = "https://docs.rs/philiprehberger-cache-kit"
 keywords = ["cache", "lru", "ttl", "memory", "caching"]
 categories = ["caching", "data-structures"]
