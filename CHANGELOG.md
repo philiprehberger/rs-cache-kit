@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6
+
+- Fix clippy incompatible_msrv: replace is_none_or with map_or for Rust 1.70 compatibility
+
 ## 0.3.5
 
 - Add readme, rust-version, documentation to Cargo.toml

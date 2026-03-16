@@ -10,7 +10,7 @@ Generic LRU cache with TTL, tags, and thread safety for Rust.
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.3.5"
+philiprehberger-cache-kit = "0.3.6"
 ```
 
 ## Usage
