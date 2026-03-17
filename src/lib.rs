@@ -1,8 +1,20 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::hash::Hash;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+
+/// Snapshot of cache performance counters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheStats {
+    /// Number of successful cache hits.
+    pub hits: u64,
+    /// Number of cache misses (key absent or expired).
+    pub misses: u64,
+    /// Number of entries evicted (LRU or expired-on-evict).
+    pub evictions: u64,
+}
 
 struct Entry<V> {
     value: V,
@@ -16,6 +28,9 @@ where
     K: Eq + Hash + Clone,
 {
     inner: Arc<RwLock<CacheInner<K, V>>>,
+    hits: Arc<AtomicU64>,
+    misses: Arc<AtomicU64>,
+    evictions: Arc<AtomicU64>,
 }
 
 struct CacheInner<K, V>
@@ -64,6 +79,9 @@ where
                 max_size,
                 default_ttl,
             })),
+            hits: Arc::new(AtomicU64::new(0)),
+            misses: Arc::new(AtomicU64::new(0)),
+            evictions: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -99,12 +117,14 @@ where
             if let Some(ek) = expired_key {
                 inner.items.remove(&ek);
                 inner.order.retain(|k| k != &ek);
+                self.evictions.fetch_add(1, Ordering::Relaxed);
                 evicted = true;
             }
 
             if !evicted {
                 if let Some(lru_key) = inner.order.pop_back() {
                     inner.items.remove(&lru_key);
+                    self.evictions.fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
@@ -121,17 +141,26 @@ where
     }
 
     /// Get a value from the cache. Returns None if not found or expired.
+    ///
+    /// Increments the hit counter on success, or the miss counter on failure.
     pub fn get(&self, key: &K) -> Option<V>
     where
         V: Clone,
     {
         let mut inner = self.inner.write().unwrap();
-        let entry = inner.items.get(key)?;
+        let entry = match inner.items.get(key) {
+            Some(e) => e,
+            None => {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+        };
 
         if let Some(expires_at) = entry.expires_at {
             if Instant::now() > expires_at {
                 inner.items.remove(key);
                 inner.order.retain(|k| k != key);
+                self.misses.fetch_add(1, Ordering::Relaxed);
                 return None;
             }
         }
@@ -139,6 +168,7 @@ where
         let value = entry.value.clone();
         inner.order.retain(|k| k != key);
         inner.order.push_front(key.clone());
+        self.hits.fetch_add(1, Ordering::Relaxed);
         Some(value)
     }
 
@@ -258,6 +288,56 @@ where
         self.set(key, value.clone());
         value
     }
+
+    /// Return a snapshot of cache performance counters.
+    pub fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits.load(Ordering::Relaxed),
+            misses: self.misses.load(Ordering::Relaxed),
+            evictions: self.evictions.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Retrieve multiple values at once. Returns a map of keys to their cached values,
+    /// omitting any keys that are absent or expired.
+    pub fn get_many(&self, keys: &[K]) -> HashMap<K, V>
+    where
+        V: Clone,
+    {
+        let mut result = HashMap::with_capacity(keys.len());
+        for key in keys {
+            if let Some(val) = self.get(key) {
+                result.insert(key.clone(), val);
+            }
+        }
+        result
+    }
+
+    /// Delete all entries for which the predicate returns `true`.
+    /// Returns the number of entries removed.
+    pub fn delete_where<F>(&self, predicate: F) -> usize
+    where
+        F: Fn(&K, &V) -> bool,
+    {
+        let mut inner = self.inner.write().unwrap();
+        let keys_to_remove: Vec<K> = inner
+            .items
+            .iter()
+            .filter(|(k, entry)| predicate(k, &entry.value))
+            .map(|(k, _)| k.clone())
+            .collect();
+        let count = keys_to_remove.len();
+        for key in &keys_to_remove {
+            inner.items.remove(key);
+        }
+        inner.order.retain(|k| !keys_to_remove.contains(k));
+        count
+    }
+
+    /// Return the number of entries (alias for [`size()`](Self::size)).
+    pub fn len(&self) -> usize {
+        self.size()
+    }
 }
 
 impl<K, V> Clone for Cache<K, V>
@@ -267,6 +347,9 @@ where
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
+            hits: Arc::clone(&self.hits),
+            misses: Arc::clone(&self.misses),
+            evictions: Arc::clone(&self.evictions),
         }
     }
 }
@@ -498,5 +581,107 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         let val = cache.get_or_insert_with("key", || 99);
         assert_eq!(val, 99);
+    }
+
+    #[test]
+    fn test_stats_hits_and_misses() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+
+        // Two hits
+        assert_eq!(cache.get(&"a"), Some(1));
+        assert_eq!(cache.get(&"b"), Some(2));
+
+        // Two misses
+        assert_eq!(cache.get(&"c"), None);
+        assert_eq!(cache.get(&"d"), None);
+
+        let s = cache.stats();
+        assert_eq!(s.hits, 2);
+        assert_eq!(s.misses, 2);
+        assert_eq!(s.evictions, 0);
+    }
+
+    #[test]
+    fn test_stats_evictions() {
+        let cache = Cache::new(2, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+        // This triggers eviction of "a"
+        cache.set("c", 3);
+
+        let s = cache.stats();
+        assert_eq!(s.evictions, 1);
+    }
+
+    #[test]
+    fn test_stats_miss_on_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("key", 1, Some(Duration::from_millis(1)), &[]);
+        std::thread::sleep(Duration::from_millis(10));
+        assert_eq!(cache.get(&"key"), None);
+
+        let s = cache.stats();
+        assert_eq!(s.misses, 1);
+        assert_eq!(s.hits, 0);
+    }
+
+    #[test]
+    fn test_get_many() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+        cache.set("c", 3);
+
+        let result = cache.get_many(&["a", "c", "missing"]);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[&"a"], 1);
+        assert_eq!(result[&"c"], 3);
+    }
+
+    #[test]
+    fn test_get_many_empty() {
+        let cache: Cache<&str, i32> = Cache::new(10, None);
+        let result = cache.get_many(&["a", "b"]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_delete_where() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 20);
+        cache.set("c", 3);
+        cache.set("d", 40);
+
+        let removed = cache.delete_where(|_k, v| *v >= 10);
+        assert_eq!(removed, 2);
+        assert_eq!(cache.size(), 2);
+        assert_eq!(cache.get(&"a"), Some(1));
+        assert_eq!(cache.get(&"c"), Some(3));
+        assert_eq!(cache.get(&"b"), None);
+        assert_eq!(cache.get(&"d"), None);
+    }
+
+    #[test]
+    fn test_delete_where_none_match() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+
+        let removed = cache.delete_where(|_k, v| *v > 100);
+        assert_eq!(removed, 0);
+        assert_eq!(cache.size(), 2);
+    }
+
+    #[test]
+    fn test_len_alias() {
+        let cache = Cache::new(10, None);
+        assert_eq!(cache.len(), 0);
+        cache.set("a", 1);
+        cache.set("b", 2);
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.len(), cache.size());
     }
 }

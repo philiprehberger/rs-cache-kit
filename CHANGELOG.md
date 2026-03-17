@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Add `CacheStats` struct and `stats()` method for tracking hits, misses, and evictions
+- Add `get_many()` method for batch key retrieval
+- Add `delete_where()` method for conditional entry removal
+- Add `len()` method as alias for `size()`
+
 ## 0.3.6
 
 - Fix clippy incompatible_msrv: replace is_none_or with map_or for Rust 1.70 compatibility
