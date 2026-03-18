@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/philiprehberger-cache-kit.svg)](https://crates.io/crates/philiprehberger-cache-kit)
 [![License](https://img.shields.io/github/license/philiprehberger/rs-cache-kit)](LICENSE)
 
-Generic LRU cache with TTL, tags, and thread safety for Rust.
+Generic LRU cache with TTL, tags, and async support for Rust
 
 ## Installation
 
@@ -123,6 +123,30 @@ cache.keys()            // all non-expired keys
 cache.remove_expired()  // clean up expired entries
 ```
 
+
+## API
+
+| Function / Type | Description |
+|-----------------|-------------|
+| `Cache::new(max_size, default_ttl)` | Create a new cache with max capacity and optional default TTL |
+| `Cache::default()` | Create a cache with max_size=100 and no TTL |
+| `cache.set(key, value)` | Insert a value with default TTL and no tags |
+| `cache.set_with(key, value, ttl, tags)` | Insert a value with custom TTL and tags |
+| `cache.get(key)` | Get a value (returns `None` if missing or expired) |
+| `cache.get_many(keys)` | Retrieve multiple values at once |
+| `cache.get_or_insert_with(key, f)` | Get or compute and insert a value |
+| `cache.has(key)` | Check if a key exists and is not expired |
+| `cache.delete(key)` | Delete an entry by key |
+| `cache.delete_where(predicate)` | Remove entries matching a predicate |
+| `cache.invalidate_by_tag(tag)` | Remove all entries with the given tag |
+| `cache.clear()` | Remove all entries |
+| `cache.size()` / `cache.len()` | Return the number of entries |
+| `cache.is_empty()` | Check if the cache is empty |
+| `cache.max_size()` | Return the max capacity |
+| `cache.keys()` | Return all non-expired keys |
+| `cache.remove_expired()` | Clean up expired entries |
+| `cache.stats()` | Return hit/miss/eviction counters as `CacheStats` |
+| `CacheStats` | Struct with `hits`, `misses`, `evictions` fields |
 
 ## Development
 
