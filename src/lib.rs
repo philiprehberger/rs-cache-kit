@@ -5,9 +5,9 @@
 //! ```rust
 //! use philiprehberger_cache_kit::Cache;
 //!
-//! let mut cache = Cache::new(100);
-//! cache.set("key", "value", None, None);
-//! assert_eq!(cache.get("key"), Some(&"value"));
+//! let cache: Cache<String, String> = Cache::new(100, None);
+//! cache.set("key".into(), "value".into());
+//! assert_eq!(cache.get(&"key".into()), Some("value".into()));
 //! ```
 
 use std::collections::{HashMap, HashSet, VecDeque};
