@@ -2,7 +2,11 @@
 
 [![CI](https://github.com/philiprehberger/rs-cache-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/philiprehberger/rs-cache-kit/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/philiprehberger-cache-kit.svg)](https://crates.io/crates/philiprehberger-cache-kit)
+[![GitHub release](https://img.shields.io/github/v/release/philiprehberger/rs-cache-kit)](https://github.com/philiprehberger/rs-cache-kit/releases)
+[![Last updated](https://img.shields.io/github/last-commit/philiprehberger/rs-cache-kit)](https://github.com/philiprehberger/rs-cache-kit/commits/main)
 [![License](https://img.shields.io/github/license/philiprehberger/rs-cache-kit)](LICENSE)
+[![Bug Reports](https://img.shields.io/github/issues/philiprehberger/rs-cache-kit/bug)](https://github.com/philiprehberger/rs-cache-kit/issues?q=is%3Aissue+is%3Aopen+label%3Abug)
+[![Feature Requests](https://img.shields.io/github/issues/philiprehberger/rs-cache-kit/enhancement)](https://github.com/philiprehberger/rs-cache-kit/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement)
 [![Sponsor](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ec6cb9)](https://github.com/sponsors/philiprehberger)
 
 Generic LRU cache with TTL, tags, and async support for Rust
@@ -11,7 +15,7 @@ Generic LRU cache with TTL, tags, and async support for Rust
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.4.2"
+philiprehberger-cache-kit = "0.4.3"
 ```
 
 ## Usage
@@ -154,6 +158,13 @@ cargo test
 cargo clippy -- -D warnings
 ```
 
+## Support
+
+If you find this package useful, consider giving it a star on GitHub — it helps motivate continued maintenance and development.
+
+[![LinkedIn](https://img.shields.io/badge/Philip%20Rehberger-LinkedIn-0A66C2?logo=linkedin)](https://www.linkedin.com/in/philiprehberger)
+[![More packages](https://img.shields.io/badge/more-open%20source%20packages-blue)](https://philiprehberger.com/open-source-packages)
+
 ## License
 
-MIT
+[MIT](LICENSE)
