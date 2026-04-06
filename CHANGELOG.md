@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 (2026-04-06)
+
+- Add `peek()` method for reading values without updating LRU order
+- Add `on_evict()` callback for observing cache evictions
+- Add `entry_ttl_remaining()` method for checking remaining TTL on entries
+
 ## 0.4.4 (2026-03-31)
 
 - Standardize README to 3-badge format with emoji Support section

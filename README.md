@@ -10,7 +10,7 @@ Generic LRU cache with TTL, tags, and async support for Rust
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.4.3"
+philiprehberger-cache-kit = "0.5.0"
 ```
 
 ## Usage
@@ -111,6 +111,50 @@ let removed = cache.delete_where(|_key, value| *value > 100);
 // removed == 1, "big" is gone
 ```
 
+### Peek Without LRU Update
+
+```rust
+use philiprehberger_cache_kit::Cache;
+
+let cache = Cache::new(100, None);
+cache.set("key", "value");
+
+// Read without affecting eviction order
+let val = cache.peek(&"key");
+```
+
+### Eviction Callback
+
+```rust
+use philiprehberger_cache_kit::Cache;
+use std::sync::{Arc, Mutex};
+
+let cache = Cache::new(2, None);
+let log = Arc::new(Mutex::new(Vec::new()));
+let log2 = log.clone();
+cache.on_evict(move |key: &String, _val: &String| {
+    log2.lock().unwrap().push(key.clone());
+});
+
+cache.set("a".into(), "1".into());
+cache.set("b".into(), "2".into());
+cache.set("c".into(), "3".into()); // evicts "a"
+```
+
+### TTL Remaining
+
+```rust
+use philiprehberger_cache_kit::Cache;
+use std::time::Duration;
+
+let cache = Cache::new(100, Some(Duration::from_secs(60)));
+cache.set("key", "value");
+
+if let Some(remaining) = cache.entry_ttl_remaining(&"key") {
+    println!("TTL remaining: {:?}", remaining);
+}
+```
+
 ### Maintenance
 
 ```rust
@@ -142,6 +186,9 @@ cache.remove_expired()  // clean up expired entries
 | `cache.max_size()` | Return the max capacity |
 | `cache.keys()` | Return all non-expired keys |
 | `cache.remove_expired()` | Clean up expired entries |
+| `cache.peek(key)` | Read a value without updating LRU order |
+| `cache.on_evict(callback)` | Register a callback for cache evictions |
+| `cache.entry_ttl_remaining(key)` | Check remaining TTL for an entry |
 | `cache.stats()` | Return hit/miss/eviction counters as `CacheStats` |
 | `CacheStats` | Struct with `hits`, `misses`, `evictions` fields |
 
