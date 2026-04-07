@@ -10,7 +10,7 @@ Generic LRU cache with TTL, tags, and async support for Rust
 
 ```toml
 [dependencies]
-philiprehberger-cache-kit = "0.5.0"
+philiprehberger-cache-kit = "0.6.0"
 ```
 
 ## Usage
@@ -162,7 +162,20 @@ cache.len()             // entry count (alias for size)
 cache.is_empty()        // check if empty
 cache.max_size()        // max capacity
 cache.keys()            // all non-expired keys
+cache.iter_live()       // all non-expired (key, value) pairs
 cache.remove_expired()  // clean up expired entries
+cache.purge_expired()   // clean up expired entries (alias)
+```
+
+### Feature Flags
+
+This crate exposes an optional `serde` feature that derives `Serialize` and
+`Deserialize` on `CacheStats` for integration with JSON and other serde-based
+formats.
+
+```toml
+[dependencies]
+philiprehberger-cache-kit = { version = "0.6.0", features = ["serde"] }
 ```
 
 ## API
@@ -185,7 +198,9 @@ cache.remove_expired()  // clean up expired entries
 | `cache.is_empty()` | Check if the cache is empty |
 | `cache.max_size()` | Return the max capacity |
 | `cache.keys()` | Return all non-expired keys |
+| `cache.iter_live()` | Return all non-expired `(key, value)` pairs as a `Vec` |
 | `cache.remove_expired()` | Clean up expired entries |
+| `cache.purge_expired()` | Clean up expired entries (public wrapper around `remove_expired`) |
 | `cache.peek(key)` | Read a value without updating LRU order |
 | `cache.on_evict(callback)` | Register a callback for cache evictions |
 | `cache.entry_ttl_remaining(key)` | Check remaining TTL for an entry |

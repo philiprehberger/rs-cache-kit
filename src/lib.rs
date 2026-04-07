@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 /// Snapshot of cache performance counters.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CacheStats {
     /// Number of successful cache hits.
     pub hits: u64,
@@ -286,9 +287,7 @@ where
         inner
             .items
             .iter()
-            .filter(|(_, entry)| {
-                entry.expires_at.map_or(true, |t| now <= t)
-            })
+            .filter(|(_, entry)| entry.expires_at.map_or(true, |t| now <= t))
             .map(|(k, _)| k.clone())
             .collect()
     }
@@ -444,6 +443,32 @@ where
     /// Return the number of entries (alias for [`size()`](Self::size)).
     pub fn len(&self) -> usize {
         self.size()
+    }
+
+    /// Return all non-expired `(key, value)` pairs as a `Vec`.
+    ///
+    /// Takes a read lock and clones each live entry. Expired entries are skipped
+    /// using the same check as [`get()`](Self::get). Does not update LRU order
+    /// and does not remove expired entries.
+    pub fn iter_live(&self) -> Vec<(K, V)>
+    where
+        V: Clone,
+    {
+        let inner = self.inner.read().unwrap();
+        let now = Instant::now();
+        inner
+            .items
+            .iter()
+            .filter(|(_, entry)| entry.expires_at.map_or(true, |t| now <= t))
+            .map(|(k, entry)| (k.clone(), entry.value.clone()))
+            .collect()
+    }
+
+    /// Remove all expired entries from the cache. Returns the number of entries removed.
+    ///
+    /// Public wrapper around [`remove_expired()`](Self::remove_expired).
+    pub fn purge_expired(&self) -> usize {
+        self.remove_expired()
     }
 }
 
@@ -923,5 +948,51 @@ mod tests {
         cache.set_with("key", "value", Some(Duration::from_millis(30)), &[]);
         std::thread::sleep(Duration::from_millis(50));
         assert_eq!(cache.entry_ttl_remaining(&"key"), None);
+    }
+
+    #[test]
+    fn test_iter_live_returns_all_live_pairs() {
+        let cache = Cache::new(10, None);
+        cache.set("a", 1);
+        cache.set("b", 2);
+        let mut pairs = cache.iter_live();
+        pairs.sort();
+        assert_eq!(pairs, vec![("a", 1), ("b", 2)]);
+    }
+
+    #[test]
+    fn test_iter_live_excludes_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("fresh", 1, None, &[]);
+        cache.set_with("stale", 2, Some(Duration::from_millis(1)), &[]);
+        std::thread::sleep(Duration::from_millis(10));
+        let pairs = cache.iter_live();
+        assert_eq!(pairs, vec![("fresh", 1)]);
+    }
+
+    #[test]
+    fn test_purge_expired() {
+        let cache = Cache::new(10, None);
+        cache.set_with("fresh", 1, None, &[]);
+        cache.set_with("stale1", 2, Some(Duration::from_millis(1)), &[]);
+        cache.set_with("stale2", 3, Some(Duration::from_millis(1)), &[]);
+        std::thread::sleep(Duration::from_millis(10));
+        let removed = cache.purge_expired();
+        assert_eq!(removed, 2);
+        assert_eq!(cache.size(), 1);
+        assert!(cache.has(&"fresh"));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_cache_stats_serde_round_trip() {
+        let stats = CacheStats {
+            hits: 10,
+            misses: 3,
+            evictions: 2,
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        let back: CacheStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(stats, back);
     }
 }
