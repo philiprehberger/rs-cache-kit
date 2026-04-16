@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (2026-04-06)
+
+- Add optional `serde` feature deriving `Serialize`/`Deserialize` on `CacheStats`
+- Add `iter_live()` method returning all non-expired `(key, value)` pairs
+- Add `purge_expired()` public wrapper around `remove_expired()`
+
 ## 0.5.0 (2026-04-06)
 
 - Add `peek()` method for reading values without updating LRU order
